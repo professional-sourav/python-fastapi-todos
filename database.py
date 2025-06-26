@@ -4,7 +4,7 @@ from fastapi.params import Depends
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 
-SA_DB_URL = 'sqlite:///./todos.db'
+SA_DB_URL = 'sqlite:///./todosapp.db'
 
 engine = create_engine(
     SA_DB_URL,
