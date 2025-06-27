@@ -9,7 +9,7 @@ from database import db_dependency
 from models import Users
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
-from jose import jwt
+from jose import jwt, JWTError
 
 SECRET_KEY = '09df8bfbc448c7d74c0ab130bbf8e9e94fe893b9a6da778a4e834d15530a7ca'
 ALGORITHM = 'HS256'
@@ -34,7 +34,7 @@ class TokenResponse(BaseModel):
 
 bcrypt_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-oath_barer = OAuth2PasswordBearer(tokenUrl="/token")
+oath_barer = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 @authRouter.get("/", status_code= status.HTTP_200_OK)
 def get_auth():
@@ -74,7 +74,7 @@ async def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm,
             detail="Incorrect username or password"
         )
 
-    token = create_access_token(user.username, user.id, timedelta(minutes=20))
+    token = create_access_token(user.username, user.id, user.role, timedelta(minutes=20))
 
     return {
         "access_token": token,
@@ -82,24 +82,31 @@ async def login_for_access_token(form_data: Annotated[OAuth2PasswordRequestForm,
     }
 
 
-@authRouter.get("/current-user", status_code=status.HTTP_200_OK)
-def get_current_user(token: Annotated[str, Depends(oath_barer)]):
-    payload = jwt.decode(
-        token,
-        SECRET_KEY,
-        algorithms=[ALGORITHM]
-    )
+# @authRouter.get("/current-user", status_code=status.HTTP_200_OK)
+async def get_current_user(token: Annotated[str, Depends(oath_barer)]):
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
+        )
 
-    username: str = payload.get("username")
-    user_id: str = payload.get("user_id")
+        username: str = payload.get("username")
+        user_id: str = payload.get("user_id")
+        role: str = payload.get("role")
 
-    if not username or not user_id:
+        if not username or not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+
+        return {"username": username, "user_id": user_id, "role": role}
+    except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token"
         )
-
-    return {"username": username, "user_id": user_id}
 
 
 def authenticate_user(username: str, password: str, db: db_dependency):
@@ -114,8 +121,8 @@ def authenticate_user(username: str, password: str, db: db_dependency):
     return user
 
 
-def create_access_token(username: str, user_id: str, expire: timedelta):
-    encode = {'username': username, 'user_id': user_id}
+def create_access_token(username: str, user_id: str, role: str, expire: timedelta):
+    encode = {'username': username, 'user_id': user_id, 'role': role}
     expire = datetime.now(timezone.utc) + expire
     encode.update({'exp': expire})
 
